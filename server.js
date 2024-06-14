@@ -22,6 +22,9 @@ app.use(helmet.frameguard({ action: "sameorigin" }));
 
 app.use(helmet.dnsPrefetchControl());
 
+//Apply Helmet middleware to set referer policy
+app.use(helmet.referrerPolicy({ policy: "same-origin" }));
+
 //Sample front-end
 app.route('/b/:board/')
   .get(function (req, res) {
