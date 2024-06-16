@@ -1,221 +1,202 @@
-"use strict";
-const mongoose = require("mongoose");
-require("dotenv").config();
-var xssFilters = require("xss-filters"); //for user input sanitizing
+'use strict';
 
-module.exports = function (app) {
-  //connect to Mongoose and create schemas and model
-  mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  });
+const mongodb = require('mongodb');
+const mongoose = require('mongoose');
+
+module.exports = function(app) {
+
+  mongoose.connect(process.env.MONGO_URI);
+
   const replySchema = new mongoose.Schema({
     text: { type: String, required: true },
+    delete_password: { type: String, required: true },
     created_on: { type: Date, required: true },
-    //reported and delete_password fields will not be retrieved by default
-    reported: { type: Boolean, default: false, select: false },
-    delete_password: { type: String, required: true, select: false },
+    reported: { type: Boolean, required: true }
   });
-  const ThreadSchema = new mongoose.Schema({
+
+  const threadSchema = new mongoose.Schema({
     text: { type: String, required: true },
+    delete_password: { type: String, required: true },
+    board: { type: String, required: true },
     created_on: { type: Date, required: true },
     bumped_on: { type: Date, required: true },
-    replies: {
-      type: [replySchema],
-      default: [],
-    },
-    //reported and delete_password fields will not be retrieved by default
-    reported: { type: Boolean, default: false, select: false },
-    delete_password: { type: String, required: true, select: false },
+    reported: { type: Boolean, required: true },
+    replies: [replySchema]
   });
 
-  //Thread requests
-  app
-    .route("/api/threads/:board")
-    .get(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
+  const Reply = mongoose.model('Reply', replySchema);
+  const Thread = mongoose.model('Thread', threadSchema);
 
-      //find all documents, but only retrieve the 10 newest ones
-      const threadArray = await Thread.find()
-        .sort({ bumped_on: "desc" })
-        .limit(10);
-      //for each thread in the array...
-      for (let thread of threadArray) {
-        //...sort replies in array by date and remove all but three (it seems this cannot currently be done via the query)
-        thread.replies.sort((a, b) => {
-          if (a.created_on > b.created_on) {
-            return 1;
-          } else {
-            return -1;
-          }
-        });
-        thread.replies.splice(3); //...and remove all replies after the third newest one
+  app.post('/api/threads/:board', async (req, res) => {
+    let newThread = new Thread(req.body);
+    if (!newThread.board || newThread.board === '') {
+      newThread.board = req.params.board;
+    }
+    newThread.created_on = new Date();
+    newThread.bumped_on = new Date();
+    newThread.reported = false;
+    newThread.replies = [];
+    try {
+      let savedThread = await newThread.save();
+      if (savedThread) {
+        return res.redirect('/b/' + savedThread.board + '/' + savedThread.id);
       }
-      res.json(threadArray);
-    })
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-    .post(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const text = xssFilters.inHTMLData(req.body.text);
-      const pass = xssFilters.inHTMLData(req.body.delete_password);
-
-      //create the thread
-      const threadCreationDate = new Date();
-      const thread = await Thread.create({
-        text: text,
-        delete_password: pass,
-        created_on: threadCreationDate,
-        bumped_on: threadCreationDate,
-      });
-
-      res.redirect("back"); //reload the page
-    })
-
-    .delete(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = req.body.thread_id;
-      const pass = req.body.delete_password;
-
-      let thread = await Thread.findById(thread_id).select("+delete_password");
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
-      }
-
-      if (thread.delete_password == pass) {
-        await Thread.findByIdAndDelete(thread_id);
-        res.send("success");
-        return;
-      }
-      res.send("incorrect password");
-    })
-
-    .put(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = req.body.thread_id || req.body.report_id;
-
-      const thread = await Thread.findById(thread_id).select("+reported");
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
-      }
-
-      thread.reported = true;
-      await thread.save();
-      res.send("reported");
-    });
-
-  //Reply requests
-  app
-    .route("/api/replies/:board")
-    .get(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = req.query.thread_id;
-
-      const thread = await Thread.findById(thread_id);
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
-      }
-
-      //if thread is found return it
-      if (thread) {
-        res.json(thread);
-        return;
-      }
-    })
-
-    .post(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = xssFilters.inHTMLData(req.body.thread_id);
-      const text = xssFilters.inHTMLData(req.body.text);
-      const pass = xssFilters.inHTMLData(req.body.delete_password);
-
-      let thread = await Thread.findById(thread_id);
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
-      }
-
-      const replyCreationDate = new Date();
-      const newReply = {
-        text: text,
-        created_on: replyCreationDate,
-        delete_password: pass,
-      };
-      thread.replies.push(newReply);
-      thread.bumped_on = replyCreationDate; //bump thread
-      await thread.save();
-      res.redirect("back"); //reload the page
-    })
-
-    .delete(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = req.body.thread_id;
-      const reply_id = req.body.reply_id;
-      const pass = req.body.delete_password;
-
-      let thread = await Thread.findById(thread_id).select(
-        "+replies.delete_password",
+  app.post('/api/replies/:board', async (req, res) => {
+    let newReply = new Reply(req.body);
+    newReply.created_on = new Date();
+    newReply.reported = false;
+    try {
+      let updatedThread = await Thread.findByIdAndUpdate(
+        req.body.thread_id,
+        { $push: { replies: newReply }, bumped_on: new Date() },
+        { new: true }
       );
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
+      if (updatedThread) {
+        return res.redirect('/b/' + updatedThread.board + '/' + updatedThread.id + '?new_reply_id=' + newReply.id);
       }
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-      //find reply by _id and check password
-      const reply = thread.replies.id(reply_id);
-      if (!reply) {
-        res.json({ error: "an error has occurred" });
-        return;
+  app.get('/api/threads/:board', async (req, res) => {
+    try {
+      let threads = await Thread.find({ board: req.params.board })
+        .sort({ bumped_on: 'desc' })
+        .limit(10)
+        .select('-delete_password -reported')
+        .lean()
+        .exec();
+      if (threads) {
+        threads.forEach((thread) => {
+          thread['replycount'] = thread.replies.length;
+          thread.replies.sort((thread1, thread2) => {
+            return thread2.created_on - thread1.created_on;
+          });
+          thread.replies = thread.replies.slice(0, 3);
+
+          thread.replies.forEach((reply) => {
+            reply.delete_password = undefined;
+            reply.reported = undefined;
+          });
+        });
+        return res.json(threads);
       }
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-      if (reply.delete_password == pass) {
-        reply.text = "[deleted]"; //delete reply text
-        await thread.save();
-        res.send("success");
-        return;
+  app.get('/api/replies/:board', async (req, res) => {
+    try {
+      let thread = await Thread.findById(req.query.thread_id);
+      if (thread) {
+        thread.delete_password = undefined;
+        thread.reported = undefined;
+
+        thread['replycount'] = thread.replies.length;
+        thread.replies.sort((thread1, thread2) => {
+          return thread2.created_on - thread1.created_on;
+        });
+
+        thread.replies.forEach((reply) => {
+          reply.delete_password = undefined;
+          reply.reported = undefined;
+        });
+        return res.json(thread);
+      } else {
+        return res.send('Thread not found');
       }
-      res.send("incorrect password");
-    })
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-    .put(async (req, res) => {
-      const board = req.params.board;
-      //collection will be the board
-      const Thread = mongoose.model("Thread", ThreadSchema, board);
-      const thread_id = req.body.thread_id;
-      const reply_id = req.body.reply_id;
-
-      const thread =
-        await Thread.findById(thread_id).select("+replies.reported");
-      if (!thread) {
-        res.json({ error: "an error has occurred" });
-        return;
+  app.delete('/api/threads/:board', async (req, res) => {
+    try {
+      let thread = await Thread.findById(req.body.thread_id);
+      if (thread) {
+        if (thread.delete_password === req.body.delete_password) {
+          await Thread.findByIdAndDelete(req.body.thread_id);
+          return res.send('success');
+        } else {
+          return res.send('incorrect password');
+        }
+      } else {
+        return res.send('Thread not found');
       }
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-      //find reply by _id and set reported to true
-      const reply = thread.replies.id(reply_id);
-      if (!reply) {
-        res.json({ error: "an error has occurred" });
-        return;
+  app.delete('/api/replies/:board', async (req, res) => {
+    try {
+      let thread = await Thread.findById(req.body.thread_id);
+      if (thread) {
+        let reply = thread.replies.id(req.body.reply_id);
+        if (reply) {
+          if (reply.delete_password === req.body.delete_password) {
+            reply.text = '[deleted]';
+            let updatedThread = await thread.save();
+            if (updatedThread) {
+              return res.send('success');
+            }
+          } else {
+            return res.send('incorrect password');
+          }
+        } else {
+          return res.send('Reply not found');
+        }
+      } else {
+        return res.send('Thread not found');
       }
+    } catch (err) {
+      console.log(err);
+    }
+  });
 
-      reply.reported = true;
-      await thread.save();
-      res.send("reported");
-    });
+  app.put('/api/threads/:board', async (req, res) => {
+    try {
+      let thread = await Thread.findByIdAndUpdate(
+        req.body.thread_id,
+        { reported: true },
+        { new: true }
+      );
+      if (thread) {
+        return res.send('reported');
+      } else {
+        return res.send('Thread not found');
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  });
+
+  app.put('/api/replies/:board', async (req, res) => {
+    try {
+      let thread = await Thread.findById(req.body.thread_id);
+      if (thread) {
+        let reply = thread.replies.id(req.body.reply_id);
+        if (reply) {
+          reply.reported = true;
+          let updatedThread = await thread.save();
+          if (updatedThread) {
+            return res.send('reported');
+          }
+        } else {
+          return res.send('Reply not found');
+        }
+      } else {
+        return res.send('Thread not found');
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  });
 };

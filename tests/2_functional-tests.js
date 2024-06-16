@@ -6,187 +6,241 @@ const server = require("../server");
 chai.use(chaiHttp);
 
 suite("Functional Tests", function () {
-  // for reporting and deletion testing
-  let threadId;
-  const threadDeletePass = "thread_delete";
-  let replyId;
-  const replyDeletePass = "delete_reply";
+  let thread_id;
+  let reply_id;
 
-  test("Creating a new thread: POST request to /api/threads/{board}", function (done) {
-    chai
-      .request(server)
-      .post("/api/threads/tests")
-      .send({ text: "test text", delete_password: threadDeletePass })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
+  suite("API ROUTING FOR /api/threads/:board", function () {
+    suite("POST", function () {
+      test("Create a new thread", function (done) {
         chai
           .request(server)
-          .get("/api/threads/tests")
+          .post("/api/threads/testboard")
+          .send({
+            text: "Test thread text",
+            delete_password: "password",
+          })
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.exists(res.redirects[0]);
+            done();
+          });
+      });
+    });
+
+    suite("GET", function () {
+      test("Get a list of threads", function (done) {
+        chai
+          .request(server)
+          .get("/api/threads/testboard")
           .end(function (err, res) {
             assert.equal(res.status, 200);
             assert.isArray(res.body);
-            assert.exists(res.body[0]);
-            const thread = res.body[0];
-            assert.property(thread, "_id");
-            assert.property(thread, "text");
-            assert.equal(thread.text, "test text");
-            assert.property(thread, "created_on");
-            assert.property(thread, "bumped_on");
-            assert.property(thread, "replies");
-            threadId = thread._id; // for reporting and deletion testing
+            assert.property(res.body[0], "_id");
+            assert.property(res.body[0], "text");
+            assert.property(res.body[0], "created_on");
+            assert.property(res.body[0], "bumped_on");
+            assert.property(res.body[0], "replycount");
+            assert.property(res.body[0], "replies");
+            assert.isArray(res.body[0].replies);
+            thread_id = res.body[0]._id;
+            console.log("Thread ID:", thread_id); // Debug log
             done();
           });
       });
-  });
+    });
 
-  test("Viewing the 10 most recent threads with 3 replies each: GET request to /api/threads/{board}", function (done) {
-    chai
-      .request(server)
-      .get("/api/threads/tests")
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.isArray(res.body);
-        assert.isAtMost(res.body.length, 10);
-        for (let thread of res.body) {
-          assert.isAtMost(thread.replies.length, 3);
-        }
-        done();
-      });
-  });
-
-  test("Reporting a thread: PUT request to /api/threads/{board}", function (done) {
-    chai
-      .request(server)
-      .put("/api/threads/tests")
-      .send({ report_id: threadId })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "reported");
-        done();
-      });
-  });
-
-  test("Creating a new reply: POST request to /api/replies/{board}", function (done) {
-    chai
-      .request(server)
-      .post("/api/replies/tests")
-      .send({
-        text: "test text",
-        thread_id: threadId,
-        delete_password: replyDeletePass,
-      })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
+    suite("DELETE", function () {
+      test("Delete a thread", function (done) {
         chai
           .request(server)
-          .get(`/api/replies/tests?thread_id=${threadId}`)
+          .delete("/api/threads/testboard")
+          .send({
+            thread_id: thread_id,
+            delete_password: "password",
+          })
           .end(function (err, res) {
-            assert.isObject(res.body);
-            assert.exists(res.body.replies[0]);
-            const reply = res.body.replies[0];
-            assert.isObject(reply);
-            assert.property(reply, "_id");
-            assert.property(reply, "text");
-            assert.equal(reply.text, "test text");
-            assert.property(reply, "created_on");
-            replyId = reply._id; // for reporting and deletion testing
+            assert.equal(res.status, 200);
+            assert.equal(res.text, "success");
             done();
           });
       });
-  });
 
-  test("Viewing a single thread with all replies: GET request to /api/replies/{board}", function (done) {
-    chai
-      .request(server)
-      .get(`/api/replies/tests?thread_id=${threadId}`)
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        const thread = res.body;
-        assert.isObject(res.body);
-        assert.property(thread, "_id");
-        assert.property(thread, "text");
-        assert.property(thread, "replies");
-        const reply = thread.replies[0];
-        assert.isObject(reply);
-        assert.property(reply, "_id");
-        assert.property(reply, "text");
-        assert.equal(reply.text, "test text");
-        assert.property(reply, "created_on");
-        done();
+      test("Fail to delete a thread with incorrect password", function (done) {
+        // Recreate the thread for this test
+        chai
+          .request(server)
+          .post("/api/threads/testboard")
+          .send({
+            text: "Test thread text",
+            delete_password: "password",
+          })
+          .end(function (err, res) {
+            chai
+              .request(server)
+              .get("/api/threads/testboard")
+              .end(function (err, res) {
+                thread_id = res.body[0]._id;
+                console.log(
+                  "Thread ID for incorrect password test:",
+                  thread_id,
+                ); // Debug log
+
+                chai
+                  .request(server)
+                  .delete("/api/threads/testboard")
+                  .send({
+                    thread_id: thread_id,
+                    delete_password: "wrongpassword",
+                  })
+                  .end(function (err, res) {
+                    assert.equal(res.status, 200);
+                    assert.equal(res.text, "incorrect password");
+                    done();
+                  });
+              });
+          });
       });
-  });
+    });
 
-  test("Reporting a reply: PUT request to /api/replies/{board}", function (done) {
-    chai
-      .request(server)
-      .put("/api/replies/tests")
-      .send({ thread_id: threadId, reply_id: replyId })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "reported");
-        done();
+    suite("PUT", function () {
+      test("Report a thread", function (done) {
+        // Recreate the thread for this test
+        chai
+          .request(server)
+          .post("/api/threads/testboard")
+          .send({
+            text: "Test thread text",
+            delete_password: "password",
+          })
+          .end(function (err, res) {
+            chai
+              .request(server)
+              .get("/api/threads/testboard")
+              .end(function (err, res) {
+                thread_id = res.body[0]._id;
+                console.log("Thread ID for reporting:", thread_id); // Debug log
+
+                chai
+                  .request(server)
+                  .put("/api/threads/testboard")
+                  .send({
+                    thread_id: thread_id,
+                  })
+                  .end(function (err, res) {
+                    assert.equal(res.status, 200);
+                    assert.equal(res.text, "reported");
+                    done();
+                  });
+              });
+          });
       });
+    });
   });
 
-  test("Deleting a reply with the incorrect password: DELETE request to /api/replies/{board} with an invalid delete_password", function (done) {
-    chai
-      .request(server)
-      .delete(`/api/replies/tests?thread_id=${threadId}`)
-      .send({
-        thread_id: threadId,
-        reply_id: replyId,
-        delete_password: "bad password",
-      })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "incorrect password");
-        done();
+  suite("API ROUTING FOR /api/replies/:board", function () {
+    suite("POST", function () {
+      test("Create a new reply", function (done) {
+        chai
+          .request(server)
+          .post("/api/threads/testboard")
+          .send({
+            text: "Thread for replies",
+            delete_password: "password",
+          })
+          .end(function (err, res) {
+            chai
+              .request(server)
+              .get("/api/threads/testboard")
+              .end(function (err, res) {
+                thread_id = res.body[0]._id;
+                console.log("Thread ID for reply:", thread_id); // Debug log
+                chai
+                  .request(server)
+                  .post("/api/replies/testboard")
+                  .send({
+                    thread_id: thread_id,
+                    text: "Test reply text",
+                    delete_password: "password",
+                  })
+                  .end(function (err, res) {
+                    assert.equal(res.status, 200);
+                    assert.exists(res.redirects[0]);
+                    done();
+                  });
+              });
+          });
       });
-  });
+    });
 
-  test("Deleting a reply with the correct password: DELETE request to /api/replies/{board} with an invalid delete_password", function (done) {
-    chai
-      .request(server)
-      .delete(`/api/replies/tests?thread_id=${threadId}`)
-      .send({
-        thread_id: threadId,
-        reply_id: replyId,
-        delete_password: replyDeletePass,
-      })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "success");
-        done();
+    suite("GET", function () {
+      test("Get a thread with all replies", function (done) {
+        chai
+          .request(server)
+          .get("/api/replies/testboard")
+          .query({ thread_id: thread_id })
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.property(res.body, "text");
+            assert.property(res.body, "created_on");
+            assert.property(res.body, "bumped_on");
+            assert.property(res.body, "replies");
+            assert.isArray(res.body.replies);
+            reply_id = res.body.replies[0]._id;
+            console.log("Reply ID:", reply_id); // Debug log
+            done();
+          });
       });
-  });
+    });
 
-  test("Deleting a thread with the incorrect password: DELETE request to /api/threads/{board} with an invalid delete_password", function (done) {
-    chai
-      .request(server)
-      .delete("/api/threads/tests")
-      .send({ thread_id: threadId, delete_password: "bad password" })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "incorrect password");
-        done();
+    suite("DELETE", function () {
+      test("Delete a reply", function (done) {
+        chai
+          .request(server)
+          .delete("/api/replies/testboard")
+          .send({
+            thread_id: thread_id,
+            reply_id: reply_id,
+            delete_password: "password",
+          })
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.equal(res.text, "success");
+            done();
+          });
       });
-  });
 
-  test("Deleting a thread with the correct password: DELETE request to /api/threads/{board} with an invalid delete_password", function (done) {
-    chai
-      .request(server)
-      .delete("/api/threads/tests")
-      .send({ thread_id: threadId, delete_password: threadDeletePass })
-      .end(function (err, res) {
-        assert.equal(res.status, 200);
-        assert.equal(res.text, "success");
-        done();
+      test("Fail to delete a reply with incorrect password", function (done) {
+        chai
+          .request(server)
+          .delete("/api/replies/testboard")
+          .send({
+            thread_id: thread_id,
+            reply_id: reply_id,
+            delete_password: "wrongpassword",
+          })
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.equal(res.text, "incorrect password");
+            done();
+          });
       });
-  });
+    });
 
-  //Reloads the page after it crashes when finishing the tests
-  //This is necessary because Replit is bugged
-  after(function () {
-    chai.request(server).get("/");
+    suite("PUT", function () {
+      test("Report a reply", function (done) {
+        chai
+          .request(server)
+          .put("/api/replies/testboard")
+          .send({
+            thread_id: thread_id,
+            reply_id: reply_id,
+          })
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.equal(res.text, "reported");
+            done();
+          });
+      });
+    });
   });
 });
