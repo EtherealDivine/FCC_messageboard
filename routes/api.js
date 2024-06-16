@@ -7,7 +7,10 @@ module.exports = function (app) {
   console.log("Connecting to MongoDB with URI:", uri);
 
   mongoose
-    .connect(uri)
+    .connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    })
     .then(() => console.log("MongoDB connected successfully"))
     .catch((err) => console.log("MongoDB connection error:", err));
 
@@ -51,6 +54,35 @@ module.exports = function (app) {
     } catch (error) {
       console.log("Error saving thread:", error);
       response.status(500).send("Error saving thread");
+    }
+  });
+
+  app.post("/api/replies/:board", async (request, response) => {
+    let newReply = new Reply({
+      text: request.body.text,
+      delete_password: request.body.delete_password,
+    });
+    newReply.createdon_ = new Date();
+    newReply.reported = false;
+
+    try {
+      let updatedThread = await Thread.findByIdAndUpdate(
+        request.body.thread_id,
+        { $push: { replies: newReply }, bumpedon_: new Date() },
+        { new: true },
+      );
+
+      if (updatedThread) {
+        const baseUrl = `${request.protocol}://${request.get("host")}`;
+        const redirectUrl = `${baseUrl}/b/${updatedThread.board}/${updatedThread._id}?new_reply_id=${newReply._id}`;
+        console.log("Redirecting to:", redirectUrl);
+        response.redirect(redirectUrl);
+      } else {
+        response.status(404).send("Thread not found");
+      }
+    } catch (error) {
+      console.log("Error updating thread with reply:", error);
+      response.status(500).send("Error updating thread with reply");
     }
   });
 

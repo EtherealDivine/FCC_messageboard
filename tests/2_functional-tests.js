@@ -27,4 +27,21 @@ suite("Functional Tests", function () {
         done();
       });
   });
+
+  test("Reply to a Thread", (done) => {
+    chai
+      .request(server)
+      .post("/api/replies/test")
+      .send({
+        thread_id: testThreadId,
+        text: "Functional Test Reply",
+        delete_password: testPass,
+      })
+      .end((err, res) => {
+        assert.equal(res.status, 200);
+        let createdReplyId = res.redirects[0].split("=")[1];
+        testReplyId = createdReplyId;
+        done();
+      });
+  });
 });
