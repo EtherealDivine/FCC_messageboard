@@ -16,7 +16,8 @@
 		"helmet": "^3.1.0",
 		"mocha": "^3.2.0",
 		"mongodb": "^6.7.0",
-		"mongoose": "^8.4.1"
+		"mongoose": "^8.4.1",
+		"xss-filters": "^1.2.7"
 	},
 	"repository": {
 		"type": "git",
