@@ -1,17 +1,16 @@
-'use strict';
+"use strict";
 
-const mongodb = require('mongodb');
-const mongoose = require('mongoose');
+const mongodb = require("mongodb");
+const mongoose = require("mongoose");
 
-module.exports = function(app) {
-
+module.exports = function (app) {
   mongoose.connect(process.env.MONGO_URI);
 
   const replySchema = new mongoose.Schema({
     text: { type: String, required: true },
     delete_password: { type: String, required: true },
     created_on: { type: Date, required: true },
-    reported: { type: Boolean, required: true }
+    reported: { type: Boolean, required: true },
   });
 
   const threadSchema = new mongoose.Schema({
@@ -21,15 +20,15 @@ module.exports = function(app) {
     created_on: { type: Date, required: true },
     bumped_on: { type: Date, required: true },
     reported: { type: Boolean, required: true },
-    replies: [replySchema]
+    replies: [replySchema],
   });
 
-  const Reply = mongoose.model('Reply', replySchema);
-  const Thread = mongoose.model('Thread', threadSchema);
+  const Reply = mongoose.model("Reply", replySchema);
+  const Thread = mongoose.model("Thread", threadSchema);
 
-  app.post('/api/threads/:board', async (req, res) => {
+  app.post("/api/threads/:board", async (req, res) => {
     let newThread = new Thread(req.body);
-    if (!newThread.board || newThread.board === '') {
+    if (!newThread.board || newThread.board === "") {
       newThread.board = req.params.board;
     }
     newThread.created_on = new Date();
@@ -39,14 +38,14 @@ module.exports = function(app) {
     try {
       let savedThread = await newThread.save();
       if (savedThread) {
-        return res.redirect('/b/' + savedThread.board + '/' + savedThread.id);
+        return res.redirect("/b/" + savedThread.board + "/" + savedThread.id);
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.post('/api/replies/:board', async (req, res) => {
+  /*app.post("/api/replies/:board", async (req, res) => {
     let newReply = new Reply(req.body);
     newReply.created_on = new Date();
     newReply.reported = false;
@@ -54,27 +53,62 @@ module.exports = function(app) {
       let updatedThread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { $push: { replies: newReply }, bumped_on: new Date() },
-        { new: true }
+        { new: true },
       );
       if (updatedThread) {
-        return res.redirect('/b/' + updatedThread.board + '/' + updatedThread.id + '?new_reply_id=' + newReply.id);
+        return res.redirect(
+          "/b/" +
+            updatedThread.board +
+            "/" +
+            updatedThread.id +
+            "?new_reply_id=" +
+            newReply.id,
+        );
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  });*/
+  app.post("/api/replies/:board", async (req, res) => {
+    let newReply = {
+      text: req.body.text,
+      delete_password: req.body.delete_password,
+      created_on: new Date(),
+      reported: false,
+    };
+
+    try {
+      let updatedThread = await Thread.findByIdAndUpdate(
+        req.body.thread_id,
+        { $push: { replies: newReply }, bumped_on: new Date() },
+        { new: true },
+      );
+      if (updatedThread) {
+        return res.redirect(
+          "/b/" +
+            updatedThread.board +
+            "/" +
+            updatedThread.id +
+            "?new_reply_id=" +
+            newReply._id,
+        );
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.get('/api/threads/:board', async (req, res) => {
+  /*app.get("/api/threads/:board", async (req, res) => {
     try {
       let threads = await Thread.find({ board: req.params.board })
-        .sort({ bumped_on: 'desc' })
+        .sort({ bumped_on: "desc" })
         .limit(10)
-        .select('-delete_password -reported')
+        .select("-delete_password -reported")
         .lean()
         .exec();
       if (threads) {
         threads.forEach((thread) => {
-          thread['replycount'] = thread.replies.length;
+          thread["replycount"] = thread.replies.length;
           thread.replies.sort((thread1, thread2) => {
             return thread2.created_on - thread1.created_on;
           });
@@ -90,16 +124,44 @@ module.exports = function(app) {
     } catch (err) {
       console.log(err);
     }
+  });*/
+  app.get("/api/threads/:board", async (req, res) => {
+    try {
+      let threads = await Thread.find({ board: req.params.board })
+        .sort({ bumped_on: -1 })
+        .limit(10)
+        .select("-delete_password -reported")
+        .lean()
+        .exec();
+
+      if (threads) {
+        threads.forEach((thread) => {
+          thread.replycount = thread.replies.length;
+          thread.replies.sort((a, b) => b.created_on - a.created_on);
+          thread.replies = thread.replies.slice(0, 3);
+          thread.replies = thread.replies.map((reply) => {
+            return {
+              _id: reply._id,
+              text: reply.text,
+              created_on: reply.created_on,
+            };
+          });
+        });
+        return res.json(threads);
+      }
+    } catch (err) {
+      console.log(err);
+    }
   });
 
-  app.get('/api/replies/:board', async (req, res) => {
+  app.get("/api/replies/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.query.thread_id);
       if (thread) {
         thread.delete_password = undefined;
         thread.reported = undefined;
 
-        thread['replycount'] = thread.replies.length;
+        thread["replycount"] = thread.replies.length;
         thread.replies.sort((thread1, thread2) => {
           return thread2.created_on - thread1.created_on;
         });
@@ -110,75 +172,75 @@ module.exports = function(app) {
         });
         return res.json(thread);
       } else {
-        return res.send('Thread not found');
+        return res.send("Thread not found");
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.delete('/api/threads/:board', async (req, res) => {
+  app.delete("/api/threads/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);
       if (thread) {
         if (thread.delete_password === req.body.delete_password) {
           await Thread.findByIdAndDelete(req.body.thread_id);
-          return res.send('success');
+          return res.send("success");
         } else {
-          return res.send('incorrect password');
+          return res.send("incorrect password");
         }
       } else {
-        return res.send('Thread not found');
+        return res.send("Thread not found");
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.delete('/api/replies/:board', async (req, res) => {
+  app.delete("/api/replies/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);
       if (thread) {
         let reply = thread.replies.id(req.body.reply_id);
         if (reply) {
           if (reply.delete_password === req.body.delete_password) {
-            reply.text = '[deleted]';
+            reply.text = "[deleted]";
             let updatedThread = await thread.save();
             if (updatedThread) {
-              return res.send('success');
+              return res.send("success");
             }
           } else {
-            return res.send('incorrect password');
+            return res.send("incorrect password");
           }
         } else {
-          return res.send('Reply not found');
+          return res.send("Reply not found");
         }
       } else {
-        return res.send('Thread not found');
+        return res.send("Thread not found");
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.put('/api/threads/:board', async (req, res) => {
+  app.put("/api/threads/:board", async (req, res) => {
     try {
       let thread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { reported: true },
-        { new: true }
+        { new: true },
       );
       if (thread) {
-        return res.send('reported');
+        return res.send("reported");
       } else {
-        return res.send('Thread not found');
+        return res.send("Thread not found");
       }
     } catch (err) {
       console.log(err);
     }
   });
 
-  app.put('/api/replies/:board', async (req, res) => {
+  app.put("/api/replies/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);
       if (thread) {
@@ -187,13 +249,13 @@ module.exports = function(app) {
           reply.reported = true;
           let updatedThread = await thread.save();
           if (updatedThread) {
-            return res.send('reported');
+            return res.send("reported");
           }
         } else {
-          return res.send('Reply not found');
+          return res.send("Reply not found");
         }
       } else {
-        return res.send('Thread not found');
+        return res.send("Thread not found");
       }
     } catch (err) {
       console.log(err);

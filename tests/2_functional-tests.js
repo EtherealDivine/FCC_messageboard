@@ -27,7 +27,7 @@ suite("Functional Tests", function () {
       });
     });
 
-    suite("GET", function () {
+    /*suite("GET", function () {
       test("Get a list of threads", function (done) {
         chai
           .request(server)
@@ -44,6 +44,27 @@ suite("Functional Tests", function () {
             assert.isArray(res.body[0].replies);
             thread_id = res.body[0]._id;
             console.log("Thread ID:", thread_id); // Debug log
+            done();
+          });
+      });
+    });*/
+    suite("GET", function () {
+      test("Get a list of threads", function (done) {
+        chai
+          .request(server)
+          .get("/api/threads/testboard")
+          .end(function (err, res) {
+            assert.equal(res.status, 200);
+            assert.isArray(res.body);
+            assert.property(res.body[0], "_id");
+            assert.property(res.body[0], "text");
+            assert.property(res.body[0], "created_on");
+            assert.property(res.body[0], "bumped_on");
+            assert.property(res.body[0], "replycount");
+            assert.property(res.body[0], "replies");
+            assert.isArray(res.body[0].replies);
+            assert.isAtMost(res.body[0].replies.length, 3); // Ensure only 3 replies are returned
+            thread_id = res.body[0]._id;
             done();
           });
       });
