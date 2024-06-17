@@ -13,21 +13,22 @@ module.exports = function (app) {
     text: { type: String, required: true },
     delete_password: { type: String, required: true },
     created_on: { type: Date, required: true },
-    reported: { type: Boolean, required: true },
+    reported: { type: Boolean, required: true, default: false },
   });
 
   const threadSchema = new mongoose.Schema({
     text: { type: String, required: true },
     delete_password: { type: String, required: true },
     board: { type: String, required: true },
-    created_on: { type: Date, required: true },
-    bumped_on: { type: Date, required: true },
-    reported: { type: Boolean, required: true },
+    created_on: { type: Date, required: true, default: Date.now },
+    bumped_on: { type: Date, required: true, default: Date.now },
+    reported: { type: Boolean, required: true, default: false },
     replies: [replySchema],
   });
 
   const Thread = mongoose.model("Thread", threadSchema);
 
+  // POST request to create a new thread
   app.post("/api/threads/:board", async (req, res) => {
     let newThread = new Thread(req.body);
     newThread.board = req.params.board;
@@ -46,6 +47,7 @@ module.exports = function (app) {
     }
   });
 
+  // POST request to create a new reply
   app.post("/api/replies/:board", async (req, res) => {
     let newReply = {
       text: req.body.text,
@@ -58,7 +60,7 @@ module.exports = function (app) {
       let updatedThread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { $push: { replies: newReply }, bumped_on: new Date() },
-        { new: true }
+        { new: true },
       );
       if (updatedThread) {
         return res.redirect(
@@ -67,7 +69,7 @@ module.exports = function (app) {
             "/" +
             updatedThread._id +
             "?new_reply_id=" +
-            newReply._id
+            newReply._id,
         );
       }
     } catch (err) {
@@ -75,27 +77,32 @@ module.exports = function (app) {
     }
   });
 
+  // GET request to fetch the most recent 10 bumped threads
   app.get("/api/threads/:board", async (req, res) => {
     try {
       let threads = await Thread.find({ board: req.params.board })
         .sort({ bumped_on: -1 })
         .limit(10)
-        .select("_id text created_on bumped_on replies")
         .lean()
         .exec();
 
       if (threads) {
         threads.forEach((thread) => {
-          thread.replycount = thread.replies.length;
-          thread.replies.sort((a, b) => b.created_on - a.created_on);
-          thread.replies = thread.replies.slice(0, 3).map((reply) => ({
-            _id: reply._id,
-            text: reply.text,
-            created_on: reply.created_on,
-          }));
-          thread.delete_password = undefined;
-          thread.reported = undefined;
+          thread.replycount = thread.replies.length; // Adding replycount property
+          thread.replies = thread.replies
+            .sort((a, b) => b.created_on - a.created_on)
+            .slice(0, 3)
+            .map((reply) => ({
+              _id: reply._id,
+              text: reply.text,
+              created_on: reply.created_on,
+            }));
+
+          // Removing fields that should not be sent to the client
+          delete thread.delete_password;
+          delete thread.reported;
         });
+
         console.log("Threads response:", threads); // Logging response
         return res.json(threads);
       }
@@ -104,19 +111,23 @@ module.exports = function (app) {
     }
   });
 
+  // GET request to fetch an entire thread with all its replies
   app.get("/api/replies/:board", async (req, res) => {
     try {
-      let thread = await Thread.findById(req.query.thread_id);
+      let thread = await Thread.findById(req.query.thread_id).lean();
       if (thread) {
-        thread.delete_password = undefined;
-        thread.reported = undefined;
-        thread.replycount = thread.replies.length;
-        thread.replies.sort((a, b) => b.created_on - a.created_on);
         thread.replies.forEach((reply) => {
-          reply.delete_password = undefined;
-          reply.reported = undefined;
+          delete reply.delete_password;
+          delete reply.reported;
         });
-        return res.json(thread);
+
+        return res.json({
+          _id: thread._id,
+          text: thread.text,
+          created_on: thread.created_on,
+          bumped_on: thread.bumped_on,
+          replies: thread.replies,
+        });
       } else {
         return res.send("Thread not found");
       }
@@ -125,6 +136,7 @@ module.exports = function (app) {
     }
   });
 
+  // DELETE request to delete a thread
   app.delete("/api/threads/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);
@@ -143,6 +155,7 @@ module.exports = function (app) {
     }
   });
 
+  // DELETE request to delete a reply
   app.delete("/api/replies/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);
@@ -169,12 +182,13 @@ module.exports = function (app) {
     }
   });
 
+  // PUT request to report a thread
   app.put("/api/threads/:board", async (req, res) => {
     try {
       let thread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { reported: true },
-        { new: true }
+        { new: true },
       );
       if (thread) {
         return res.send("reported");
@@ -186,6 +200,7 @@ module.exports = function (app) {
     }
   });
 
+  // PUT request to report a reply
   app.put("/api/replies/:board", async (req, res) => {
     try {
       let thread = await Thread.findById(req.body.thread_id);

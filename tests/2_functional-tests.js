@@ -27,27 +27,6 @@ suite("Functional Tests", function () {
       });
     });
 
-    /*suite("GET", function () {
-      test("Get a list of threads", function (done) {
-        chai
-          .request(server)
-          .get("/api/threads/testboard")
-          .end(function (err, res) {
-            assert.equal(res.status, 200);
-            assert.isArray(res.body);
-            assert.property(res.body[0], "_id");
-            assert.property(res.body[0], "text");
-            assert.property(res.body[0], "created_on");
-            assert.property(res.body[0], "bumped_on");
-            assert.property(res.body[0], "replycount");
-            assert.property(res.body[0], "replies");
-            assert.isArray(res.body[0].replies);
-            thread_id = res.body[0]._id;
-            console.log("Thread ID:", thread_id); // Debug log
-            done();
-          });
-      });
-    });*/
     suite("GET", function () {
       test("Get a list of threads", function (done) {
         chai
@@ -101,10 +80,6 @@ suite("Functional Tests", function () {
               .get("/api/threads/testboard")
               .end(function (err, res) {
                 thread_id = res.body[0]._id;
-                console.log(
-                  "Thread ID for incorrect password test:",
-                  thread_id,
-                ); // Debug log
 
                 chai
                   .request(server)
@@ -139,7 +114,6 @@ suite("Functional Tests", function () {
               .get("/api/threads/testboard")
               .end(function (err, res) {
                 thread_id = res.body[0]._id;
-                console.log("Thread ID for reporting:", thread_id); // Debug log
 
                 chai
                   .request(server)
@@ -174,7 +148,7 @@ suite("Functional Tests", function () {
               .get("/api/threads/testboard")
               .end(function (err, res) {
                 thread_id = res.body[0]._id;
-                console.log("Thread ID for reply:", thread_id); // Debug log
+
                 chai
                   .request(server)
                   .post("/api/replies/testboard")
@@ -207,7 +181,6 @@ suite("Functional Tests", function () {
             assert.property(res.body, "replies");
             assert.isArray(res.body.replies);
             reply_id = res.body.replies[0]._id;
-            console.log("Reply ID:", reply_id); // Debug log
             done();
           });
       });
