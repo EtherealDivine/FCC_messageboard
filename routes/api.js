@@ -26,7 +26,6 @@ module.exports = function (app) {
     replies: [replySchema],
   });
 
-  const Reply = mongoose.model("Reply", replySchema);
   const Thread = mongoose.model("Thread", threadSchema);
 
   app.post("/api/threads/:board", async (req, res) => {
@@ -59,7 +58,7 @@ module.exports = function (app) {
       let updatedThread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { $push: { replies: newReply }, bumped_on: new Date() },
-        { new: true },
+        { new: true }
       );
       if (updatedThread) {
         return res.redirect(
@@ -68,7 +67,7 @@ module.exports = function (app) {
             "/" +
             updatedThread._id +
             "?new_reply_id=" +
-            newReply._id,
+            newReply._id
         );
       }
     } catch (err) {
@@ -76,35 +75,6 @@ module.exports = function (app) {
     }
   });
 
-  /*app.get("/api/threads/:board", async (req, res) => {
-    try {
-      let threads = await Thread.find({ board: req.params.board })
-        .sort({ bumped_on: -1 })
-        .limit(10)
-        .select("-delete_password -reported")
-        .lean()
-        .exec();
-
-      if (threads) {
-        threads.forEach((thread) => {
-          thread.replycount = thread.replies.length;
-          thread.replies = thread.replies
-            .sort((a, b) => b.created_on - a.created_on)
-            .slice(0, 3)
-            .map((reply) => {
-              return {
-                _id: reply._id,
-                text: reply.text,
-                created_on: reply.created_on,
-              };
-            });
-        });
-        return res.json(threads);
-      }
-    } catch (err) {
-      console.log(err);
-    }
-  });*/
   app.get("/api/threads/:board", async (req, res) => {
     try {
       let threads = await Thread.find({ board: req.params.board })
@@ -118,16 +88,15 @@ module.exports = function (app) {
         threads.forEach((thread) => {
           thread.replycount = thread.replies.length;
           thread.replies.sort((a, b) => b.created_on - a.created_on);
-          thread.replies = thread.replies.slice(0, 3);
-          thread.replies = thread.replies.map((reply) => {
-            return {
-              _id: reply._id,
-              text: reply.text,
-              created_on: reply.created_on,
-            };
-          });
+          thread.replies = thread.replies.slice(0, 3).map((reply) => ({
+            _id: reply._id,
+            text: reply.text,
+            created_on: reply.created_on,
+          }));
+          thread.delete_password = undefined;
+          thread.reported = undefined;
         });
-        console.log("Threads response:", threads); // Add logging
+        console.log("Threads response:", threads); // Logging response
         return res.json(threads);
       }
     } catch (err) {
@@ -205,7 +174,7 @@ module.exports = function (app) {
       let thread = await Thread.findByIdAndUpdate(
         req.body.thread_id,
         { reported: true },
-        { new: true },
+        { new: true }
       );
       if (thread) {
         return res.send("reported");
