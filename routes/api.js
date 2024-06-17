@@ -76,7 +76,7 @@ module.exports = function (app) {
     }
   });
 
-  app.get("/api/threads/:board", async (req, res) => {
+  /*app.get("/api/threads/:board", async (req, res) => {
     try {
       let threads = await Thread.find({ board: req.params.board })
         .sort({ bumped_on: -1 })
@@ -99,6 +99,35 @@ module.exports = function (app) {
               };
             });
         });
+        return res.json(threads);
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  });*/
+  app.get("/api/threads/:board", async (req, res) => {
+    try {
+      let threads = await Thread.find({ board: req.params.board })
+        .sort({ bumped_on: -1 })
+        .limit(10)
+        .select("_id text created_on bumped_on replies")
+        .lean()
+        .exec();
+
+      if (threads) {
+        threads.forEach((thread) => {
+          thread.replycount = thread.replies.length;
+          thread.replies.sort((a, b) => b.created_on - a.created_on);
+          thread.replies = thread.replies.slice(0, 3);
+          thread.replies = thread.replies.map((reply) => {
+            return {
+              _id: reply._id,
+              text: reply.text,
+              created_on: reply.created_on,
+            };
+          });
+        });
+        console.log("Threads response:", threads); // Add logging
         return res.json(threads);
       }
     } catch (err) {
